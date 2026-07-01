@@ -49,10 +49,12 @@ class TutorController extends Controller
         return ['message' => 'Tutoraggio inserito con successo'];
     }
     public function eliminatutoraggio(Request $request){
-        $result = Tutor::destroy($request->id);
-if ($result) {
-    return ["Success"=> true];
-}
-return ["Success"=>false];
+        $tutoraggio = Tutor::find($request->id);
+        $idutente = auth('api')->user()['id'];
+        if (!$tutoraggio || $tutoraggio->idtutor != $idutente) {
+            return ["Success"=>false];
+        }
+        $result = $tutoraggio->delete();
+        return ["Success"=> (bool) $result];
     }
 }

@@ -28,11 +28,13 @@ class VenditeController extends Controller
                 return $annunci;
             }
             public function elimina(Request $request){
-                $result = Vendite::destroy($request->id);
-        if ($result) {
-            return ["Success"=> true];
-        }
-        return ["Success"=>false];
+                $annuncio = Vendite::find($request->id);
+                $idutente = auth('api')->user()['id'];
+                if (!$annuncio || $annuncio->idvenditore != $idutente) {
+                    return ["Success"=>false];
+                }
+                $result = $annuncio->delete();
+                return ["Success"=> (bool) $result];
             }
             public function cercavendita(Request $request)
             {   

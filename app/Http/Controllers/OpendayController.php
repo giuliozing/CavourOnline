@@ -33,6 +33,9 @@ class OpendayController extends Controller
         return [ "mappaore"=> $mappaore];
     }
     public function richiediposto(Request $request){
+        if (!filter_var($request->email, FILTER_VALIDATE_EMAIL)) {
+            return ['message' => 'Email non valida'];
+        }
         $numeroposti = Finestreopenday::select("posti")->where('fascia','=', $request->fasciaoraria)->first();
         if( $numeroposti['posti'] == 0) return "Posti Esauriti";
         $tempo = time();

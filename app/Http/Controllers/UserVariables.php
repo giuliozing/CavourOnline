@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use GuzzleHttp\Client;
 
 class UserVariables extends Controller
@@ -17,12 +18,16 @@ class UserVariables extends Controller
     }
     public function preregister(Request $request)
     {
+        if (!filter_var($request->email, FILTER_VALIDATE_EMAIL)) {
+            return ["Success"=>false];
+        }
         $result = User::select("*")
             ->where('email', '=', "{$request->email}")->where('password', '=', '')->get();
         if(count($result)!==1){
             return ["Success"=>false];
         }
-        $hashmail = md5($request->email);
+        // Random, unguessable token: must not be derivable from the email address itself.
+        $hashmail = Str::random(40);
         $to = $request->email;
         $subject = "Completa la tua registrazione a Cavour Online";
         $txt = "Benvenuto in Cavour Online! Clicca su questo link per completare la registrazione: https://cavouronline.altervista.org/registrati/$hashmail";
@@ -44,11 +49,16 @@ class UserVariables extends Controller
     }
     public function finalize(Request $request){
         $userdata = User::select("*")
-            ->where('hash', '=', "{$request->hash}")->first();
+            ->where('hash', '=', "{$request->hash}")->where('password', '=', '')->first();
+        if (!$userdata) {
+            return ["Success"=>false];
+        }
        $userdata->status = $request->status;
        $userdata->instagram = $request->instagram;
        $userdata->phonenumber = $request->phonenumber;
        $userdata->password = Hash::make($request->password);
+       // Invalidate the one-time registration token now that it has been used.
+       $userdata->hash = Str::random(40);
        $userdata->save();
        return ["Success"=>true];
     }
@@ -126,6 +136,10 @@ class UserVariables extends Controller
         return $result;
     }
     public function trovaimmagine(Request $request){
+        // Restrict to a valid Instagram username to prevent request/path injection.
+        if (!preg_match('/^[A-Za-z0-9._]{1,30}$/', (string) $request->account)) {
+            return response(['message' => 'Invalid account'], 422);
+        }
         $client = new Client();
         $res = $client->request('GET', 'https://instagram.com/'.$request->account."/?__a=1");
 
@@ -133,6 +147,14 @@ class UserVariables extends Controller
         return($result);
     }
     public function prendiimg(Request $request){
+        // Only allow fetching from Instagram's CDN hosts to prevent SSRF
+        // (arbitrary internal/external URL fetching via user-controlled `link`).
+        $host = parse_url((string) $request->link, PHP_URL_HOST);
+        $scheme = parse_url((string) $request->link, PHP_URL_SCHEME);
+        $allowedHostPattern = '/(^|\.)(cdninstagram\.com|fbcdn\.net)$/i';
+        if (!in_array($scheme, ['http', 'https'], true) || !$host || !preg_match($allowedHostPattern, $host)) {
+            return response(['message' => 'Invalid link'], 422);
+        }
         $client = new Client();
         $res = $client->request('GET', $request->link);
         return $res->getBody();
@@ -200,8 +222,11 @@ class UserVariables extends Controller
     }
     public function inviamail(Request $request){
         $studente = User::find($request->id);
+        if (!$studente) {
+            return null;
+        }
         $user = auth('api')->user()['name'];
-        if($studente->password!==''){
+        if($studente->password!=='' && filter_var($studente->email, FILTER_VALIDATE_EMAIL)){
             $to = $studente->email;
         $subject = "Qualcuno ha visualizzato il tuo numero";
         $txt = "Ti comunichiamo che $user ha visualizzato di recente il tuo numero di telefono. Non rispondere a questa mail: per qualunque problema, contatta i gestori del sito.";
